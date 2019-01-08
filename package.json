@@ -1,0 +1,30 @@
+{
+  "name": "dai-cli",
+  "version": "0.0.1",
+  "description": "A command-line interface for dai.js",
+  "main": "lib/index.js",
+  "repository": "git@github.com:bryanwb/dai-cli.git",
+  "author": "Bryan W. Berry <bryan.berry@gmail.com>",
+  "license": "MIT",
+  "bin": {
+    "dai": "lib/index.js"
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "@makerdao/dai": "^0.9.10",
+    "configstore": "^4.0.0",
+    "inquirer": "^6.2.1",
+    "yargs": "^12.0.5"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-preset-env": "^1.7.0",
+    "babel-preset-stage-2": "^6.24.1"
+  },
+  "scripts": {
+    "build": "babel src --out-dir lib --ignore **/__tests__"
+  }
+}
