@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# this script is necessary so that we can pass the --experimental-repl-await
+# argument to the node.js interpreter
+
+if [ -z "$(readlink "${BASH_SOURCE[0]}")" ] ; then
+   LIBDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && cd ../lib && pwd )"
+else
+   LIBDIR="$( cd "$( dirname "$(readlink "${BASH_SOURCE[0]}" )" )" >/dev/null 2>&1 && cd ../lib && pwd )"
+fi
+
+node --experimental-repl-await "${LIBDIR}/index.js" "$@"
+

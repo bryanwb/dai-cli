@@ -1,8 +1,11 @@
-#!/usr/bin/env node
+// #!/usr/bin/env node
 
 // This happens to be the Mnemonic used for the test network that runs the integration tests
 // for dai.js
-const chalk = require('chalk');
+import chalk from 'chalk';
+
+// this is the url for the Ganache network that runs the dai.js integration tests
+const TEST_NETWORK_URL = 'http://127.0.0.1:2000';
 
 const makeSettings = async (network, config) => {
   let settings;
@@ -32,32 +35,71 @@ const makeSettings = async (network, config) => {
   }
 
   await setupEngine(settings);
+
   return settings;
+};
+
+const loadConfig = async (network) => {
+  const ethers = require('ethers');
+  const Maker = require('@makerdao/dai');
+  
+  const config = getCurrentConfig();
+
+  const networkName = network ? network : config.network.name;
+  
+  let wallet;
+  if (config.type === 'mnemonic') {
+    wallet = ethers.Wallet.fromMnemonic(config.mnemonic);
+  } else if (config.type === 'environment') {
+    try {
+      wallet = new ethers.Wallet(process.env[config.env_var_name]);
+    } catch (err) {
+      console.error(
+        chalk.red(`Loading private key from environment variable ${config.env_var_name} failed because ${err.reason}`)
+      );
+      process.exit(1);
+    }
+  }
+  const settings = await makeSettings(networkName, {privateKey: wallet.privateKey, infuraApiKey: config.infuraApiKey});
+  const maker = await Maker.create(config.network.name, settings);
+  await maker.authenticate();
+  
+  wallet.provider = settings.provider;
+  if (settings.provider.type === 'TEST') {
+    settings.provider.url = 'http://127.0.0.1:2000';
+  }
+
+  wallet.provider = new ethers.providers.JsonRpcProvider(settings.provider.url);
+
+  return [config, wallet, maker];
 };
 
 async function startRepl(network) {
   const Repl = require('repl');
-  const ethers = require('ethers');
+  const path = require('path');
+  const fs = require('fs');
+  const nodeReplHistory = path.join(process.env.HOME, '.node_repl_history');
+  process.env['NODE_REPL_HISTORY'] = nodeReplHistory;
+  const [config, wallet, maker] = await loadConfig(network);
 
-  const Maker = require('@makerdao/dai');
-  const conf = getCurrentConfig();
-  let wallet;
-  if (conf.type === 'mnemonic') {
-    wallet = ethers.Wallet.fromMnemonic(conf.mnemonic);
-  } else if (conf.type === 'environment') {
-    wallet = ethers.Wallet(process.env[conf.env_var_name]);
-  }
-  const settings = await makeSettings(network, {privateKey: wallet.privateKey, infuraApiKey: conf.infuraApiKey});
-
-  var maker = await Maker.create(network.toLowerCase(), settings);
-  await maker.authenticate();
-
-  var eth = new ethers.providers.JsonRpcProvider(settings.url);
+  let repl_history_exists = fs.existsSync(nodeReplHistory) ? true : false;
   
-  const r = Repl.start('> ');
+  const r = Repl.start({prompt: 'dai> ', historySize: 1000, removeHistoryDuplicates: true});
+  if (repl_history_exists) {
+    fs.readFileSync(nodeReplHistory)
+      .toString()
+      .split('\n')
+      .reverse()
+      .filter(line => line.trim())
+      .map(line => r.history.push(line));
+  }
+
   r.context.maker = maker;
   r.context.wallet = wallet;
-  r.context.eth = eth;
+  r.context.eth = wallet.provider;
+  r.on('exit', () => {
+    fs.appendFileSync(nodeReplHistory, r.lines.join('\n'));
+  });
 }
 
 function getConfig() {
@@ -69,7 +111,7 @@ function getConfig() {
 function getCurrentConfig() {
   const Configstore = require('configstore');
   const conf = new Configstore('dai', {}, {globalConfigPath: true});
-  let currentConfig = {infuraApiKey: conf.get('infura')}
+  let currentConfig = {infuraApiKey: conf.get('infuraApiKey'), network: conf.get('network')};
   currentConfig = Object.assign(currentConfig, Object.values(conf.get('accounts')).filter((acct) => acct.default)[0]);
   return currentConfig;
 }
@@ -134,7 +176,7 @@ async function addConfig() {
   conf.set('accounts', accounts);
   console.log('Configuration ' + chalk.blue(nameAnswer.name) + ` stored at path ${conf.path} and is now the default`);
 
-  let infuraApiKey = conf.get('infura');
+  let infuraApiKey = conf.get('infuraApiKey');
   let askForInfura = true;
   if (infuraApiKey) {
     const updateInfura = await inquirer.prompt([{type: 'confirm', name: 'prompt_infura', message: `You already have the Infura API Key set to '${infuraApiKey}' do you wish to change it?`}]);
@@ -151,9 +193,88 @@ async function addConfig() {
     if (infuraAnswer.infura_api_key.trim() === '') {
       console.log(chalk.yellow(''));
     }
-    conf.set('infura', infuraAnswer.infura_api_key)
+    conf.set('infuraApiKey', infuraAnswer.infura_api_key)
   }
+
+  let network = conf.get('network') || {name: 'test', url: TEST_NETWORK_URL};
+  
+  const askNetworkQuestion = [{type: 'confirm', name: 'confirm',
+                               message: `Do you wish to set the default network? Currently ${network.name} : ${network.url}`}];
+  const askNetworkAnswer = await inquirer.prompt(askNetworkQuestion);
+  if (askNetworkAnswer.confirm) {
+    const networkAnswers = await inquirer.prompt([
+      {type: 'input', name: 'name', message: 'Enter a name for the network'},
+      {type: 'list', name: 'type', message: 'Enter a type for the network', choices: ['infura', 'http']},
+      {type: 'input', name: 'url', message: 'Enter the JSON RPC URL for the network',
+       when: (answers) => { answers.type === 'http'}},
+    ]);
+    
+    network.name = networkAnswers.name;
+    network.type = networkAnswers.type;
+    if (networkAnswers.type === 'infura') {
+      network.url = `https://${network.name}.infura.io/${conf.get('infuraApiKey')}`;
+    } else {
+      network.url = networkAnswers.url;
+    }
+  }
+  conf.set('network', network);
 }
+
+const listConfig = () => {
+  const conf = getConfig();
+  if (conf.size === 0) {
+    console.log(chalk.red('No configurations currently exist. Please run `dai config add`'));
+    process.exit(1);
+  }
+
+  const network = conf.get('network') || {name: 'test', url: TEST_NETWORK_URL};
+  console.log(`Default network: ${network.name} - ${network.url}`);
+  const infuraApiKey = conf.get('infuraApiKey') || '(not set)';
+  console.log(`Infura API Key: ${infuraApiKey}`);
+
+  const accounts = conf.get('accounts') || [];
+  if (accounts.length === 0) {
+    console.log(chalk.red('No accounts currently configured'));
+  } else {
+    const Table = require('easy-table');
+    const t = new Table();
+    Object.entries(accounts).map(([name, acct]) => Object.assign({name: name}, acct))
+      .map((acct) => {
+        t.cell('name', acct.name);
+        t.cell('default', acct.default ? 'true': '');
+        t.cell('type', acct.type);
+        t.cell('environment variable', acct.type === 'environment' ? acct.env_var_name : 'n/a');
+        t.cell('mnemonmic', acct.type === 'mnemonic' ? `${acct.mnemonic.slice(0, 8)}...` : 'n/a');
+        t.newRow();
+      });
+    console.log(t.toString());
+  }
+};
+
+const switchAccount = async (name) => {
+  const conf = getConfig();
+  const accounts =  conf.get('accounts');
+
+  if (name == undefined) {
+    const inquirer = require('inquirer');
+    const nameQuestion = [{type: 'list', name: 'name',
+                           message: 'Select the account to be the default',
+                           choices: Object.keys(accounts),
+                          }];
+    const nameAnswer = await inquirer.prompt(nameQuestion);
+    name = nameAnswer.name;
+  }
+
+  if (!Object.keys(accounts).includes(name)) {
+    console.log(chalk.red(`Cannot find existing account with name ${name}`));
+    process.exit(1);
+  }
+  
+  updateDefaultAccount(name, accounts);
+  conf.set('accounts', accounts);
+
+  
+};
 
 const checkNodeVersion = () => {
   const nodeVersion = process.versions.node;
@@ -174,7 +295,7 @@ const argv = require('yargs')
       .command('config', 'Manage configurations', (yargs) => {
         return yargs.command('add', 'add a configuration')
           .command('list', 'list available configurations')
-          .command('switch', 'switch current configuration')
+          .command('switch [name]', 'switch current configuration')
           .demandCommand(1, 'You need at least one command before moving on');
       })
       .demandCommand(1, 'You need at least one command before moving on')
@@ -200,7 +321,7 @@ case 'config':
     listConfig();
     break;
   case 'switch':
-    switchConfig();
+    switchAccount(argv.name);
     break;
   default:
     throw new Error(`Unknown subcommand ${configCommand}`);
