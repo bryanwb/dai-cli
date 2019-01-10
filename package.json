@@ -1,5 +1,5 @@
 {
-  "name": "dai-cli",
+  "name": "@bryanwb/dai-cli",
   "version": "0.0.1",
   "description": "A command-line interface for dai.js",
   "main": "lib/index.js",
@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^10.12.18",
+    "@types/yargs": "^12.0.5",
     "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-plugin-transform-async-to-generator": "^6.24.1",

@@ -16,16 +16,27 @@ const makeSettings = async (network, config) => {
       web3: {
         transactionSettings: { gasLimit: 4000000 },
         confirmedBlockCount: '0',
-        provider: {type: 'TEST'}
+        provider: {type: 'TEST', url: 'http://127.0.0.1:2000'}
       },
       provider: { type: 'TEST'},
       privateKey: config.privateKey,
+    };
+  } else if (network.startsWith('http')) {
+    settings = {
+      privateKey: config.privateKey,
+      web3: {
+        provider: {type: 'HTTP', url: network},
+        transactionSettings: {
+          gasPrice: 15000000000,
+          gasLimit: 4000000
+        }
+      }
     };
   } else {
     settings = {
       privateKey: config.privateKey,
       web3: {
-        provider: {type: 'INFURA'},
+        provider: {type: 'INFURA', url: `https://${network}.infura.io/${config.infuraApiKey || ''}`},
         transactionSettings: {
           gasPrice: 15000000000,
           gasLimit: 4000000
@@ -39,14 +50,25 @@ const makeSettings = async (network, config) => {
   return settings;
 };
 
+// this method wraps maker.authenticate w/ error handling
+// see https://github.com/makerdao/dai.js/issues/75
+const authenticate = async (authFunc) => {
+  return new Promise((resolve, reject) => {
+    authFunc().then(() => {
+      resolve();
+    });
+    setTimeout(() => {
+      reject(new Error('Failed to authenticate'));
+    }, 10000);
+  });
+};
+
 const loadConfig = async (network) => {
   const ethers = require('ethers');
   const Maker = require('@makerdao/dai');
   
   const config = getCurrentConfig();
 
-  const networkName = network ? network : config.network.name;
-  
   let wallet;
   if (config.type === 'mnemonic') {
     wallet = ethers.Wallet.fromMnemonic(config.mnemonic);
@@ -60,16 +82,22 @@ const loadConfig = async (network) => {
       process.exit(1);
     }
   }
-  const settings = await makeSettings(networkName, {privateKey: wallet.privateKey, infuraApiKey: config.infuraApiKey});
-  const maker = await Maker.create(config.network.name, settings);
-  await maker.authenticate();
+
+  network = network ? network : config.network;
   
-  wallet.provider = settings.provider;
-  if (settings.provider.type === 'TEST') {
-    settings.provider.url = 'http://127.0.0.1:2000';
+  const networkName = network.startsWith('http') ? 'http': network;
+
+  const settings = await makeSettings(networkName, {privateKey: wallet.privateKey, infuraApiKey: config.infuraApiKey});
+  settings.log = true;
+  const maker = await Maker.create(networkName, settings);
+  try {
+    await authenticate(() => maker.authenticate(maker));
+  } catch (err) {
+    console.error(chalk.red(`Failed to authenticate to network ${networkName} with url ${settings.web3.provider.url}. Is it accessible?`));
   }
 
-  wallet.provider = new ethers.providers.JsonRpcProvider(settings.provider.url);
+  wallet.provider = settings.provider;
+  wallet.provider = new ethers.providers.JsonRpcProvider(settings.web3.provider.url);
 
   return [config, wallet, maker];
 };
@@ -80,9 +108,14 @@ async function startRepl(network) {
   const fs = require('fs');
   const nodeReplHistory = path.join(process.env.HOME, '.node_repl_history');
   process.env['NODE_REPL_HISTORY'] = nodeReplHistory;
+
   const [config, wallet, maker] = await loadConfig(network);
 
+  network = network ? network : config.network;
+
   let repl_history_exists = fs.existsSync(nodeReplHistory) ? true : false;
+
+  console.log(chalk.yellow(`Connecting to ${network}`));
   
   const r = Repl.start({prompt: 'dai> ', historySize: 1000, removeHistoryDuplicates: true});
   if (repl_history_exists) {
@@ -94,9 +127,12 @@ async function startRepl(network) {
       .map(line => r.history.push(line));
   }
 
-  r.context.maker = maker;
-  r.context.wallet = wallet;
-  r.context.eth = wallet.provider;
+  r.context.ctx = {};
+  r.context.ctx.maker = maker;
+  r.context.ctx.wallet = wallet;
+  r.context.ctx.eth = wallet.provider;
+  r.context.ctx.Maker = require('@makerdao/dai');
+  r.context.ctx.utils = require('ethers/utils');
   r.on('exit', () => {
     fs.appendFileSync(nodeReplHistory, r.lines.join('\n'));
   });
@@ -124,7 +160,7 @@ const updateDefaultAccount = (name, accounts) => {
   }
 };
 
-async function addConfig() {
+async function addAccount() {
   const conf = getConfig();
   const accounts = conf.get('accounts') || {};
   const inquirer = require('inquirer');
@@ -174,63 +210,71 @@ async function addConfig() {
   accounts[nameAnswer.name] = settings;
   updateDefaultAccount(nameAnswer.name, accounts);
   conf.set('accounts', accounts);
-  console.log('Configuration ' + chalk.blue(nameAnswer.name) + ` stored at path ${conf.path} and is now the default`);
-
-  let infuraApiKey = conf.get('infuraApiKey');
-  let askForInfura = true;
-  if (infuraApiKey) {
-    const updateInfura = await inquirer.prompt([{type: 'confirm', name: 'prompt_infura', message: `You already have the Infura API Key set to '${infuraApiKey}' do you wish to change it?`}]);
-    console.dir(updateInfura);
-    if (!updateInfura.prompt_infura) {
-      askForInfura = false;
-    }
-  }
-
-  if (askForInfura) {
-    const infuraQuestion = [{type: 'input', name: 'infura_api_key',
-                             message: 'Enter your Infura API key. WARNING: This value is stored on disk.'}];
-    const infuraAnswer = await inquirer.prompt(infuraQuestion);
-    if (infuraAnswer.infura_api_key.trim() === '') {
-      console.log(chalk.yellow(''));
-    }
-    conf.set('infuraApiKey', infuraAnswer.infura_api_key)
-  }
-
-  let network = conf.get('network') || {name: 'test', url: TEST_NETWORK_URL};
-  
-  const askNetworkQuestion = [{type: 'confirm', name: 'confirm',
-                               message: `Do you wish to set the default network? Currently ${network.name} : ${network.url}`}];
-  const askNetworkAnswer = await inquirer.prompt(askNetworkQuestion);
-  if (askNetworkAnswer.confirm) {
-    const networkAnswers = await inquirer.prompt([
-      {type: 'input', name: 'name', message: 'Enter a name for the network'},
-      {type: 'list', name: 'type', message: 'Enter a type for the network', choices: ['infura', 'http']},
-      {type: 'input', name: 'url', message: 'Enter the JSON RPC URL for the network',
-       when: (answers) => { answers.type === 'http'}},
-    ]);
-    
-    network.name = networkAnswers.name;
-    network.type = networkAnswers.type;
-    if (networkAnswers.type === 'infura') {
-      network.url = `https://${network.name}.infura.io/${conf.get('infuraApiKey')}`;
-    } else {
-      network.url = networkAnswers.url;
-    }
-  }
-  conf.set('network', network);
 }
+
+const setNetwork = async (networkName) => {
+  const conf = getConfig();
+  if (networkName == undefined) {
+    
+    const inquirer = require('inquirer');
+    networkName = conf.get('network') || 'test';
+
+    const askNetworkQuestion = [{type: 'confirm', name: 'confirm',
+                                 message: `Do you wish to set the default network? Currently ${networkName}`}];
+    const askNetworkAnswer = await inquirer.prompt(askNetworkQuestion);
+    if (askNetworkAnswer.confirm) {
+      const networkAnswers = await inquirer.prompt([{type: 'input', name: 'name', message: 'Enter a name or JSON RPC URL for the network'}]);
+      networkName = networkAnswers.name;
+    } else {
+      return;
+    }
+  }
+  conf.set('network', networkName);
+  console.log(`Default network set to ${networkName}`);
+};
+
+
+const setInfura = async (infuraApiKey) => {
+  const conf = getConfig();
+  const inquirer = require('inquirer');
+  
+  if (infuraApiKey == undefined) {
+    infuraApiKey = conf.get('infuraApiKey');
+    let askForInfura = true;
+    if (infuraApiKey) {
+      const updateInfura = await inquirer.prompt([{type: 'confirm', name: 'prompt_infura', message: `You already have the Infura API Key set to '${infuraApiKey}' do you wish to change it?`}]);
+      console.dir(updateInfura);
+      if (!updateInfura.prompt_infura) {
+        askForInfura = false;
+      }
+    }
+
+    if (askForInfura) {
+      const infuraQuestion = [{type: 'input', name: 'infura_api_key',
+                               message: 'Enter your Infura API key. WARNING: This value is stored on disk.'}];
+      const infuraAnswer = await inquirer.prompt(infuraQuestion);
+      infuraApiKey = infuraAnswer.infura_api_key;
+    } else {
+      return;
+    }
+  }
+    
+  conf.set('infuraApiKey', infuraApiKey)
+  console.log('Infura API key updated');
+};
+
 
 const listConfig = () => {
   const conf = getConfig();
   if (conf.size === 0) {
-    console.log(chalk.red('No configurations currently exist. Please run `dai config add`'));
+    console.log(chalk.red('No configurations currently setup. Please run `dai init`'));
     process.exit(1);
   }
 
-  const network = conf.get('network') || {name: 'test', url: TEST_NETWORK_URL};
-  console.log(`Default network: ${network.name} - ${network.url}`);
+  const network = conf.get('network') || 'test';
+  console.log(`Default network: ${network}`);
   const infuraApiKey = conf.get('infuraApiKey') || '(not set)';
-  console.log(`Infura API Key: ${infuraApiKey}`);
+  console.log(`Infura API Key: ${infuraApiKey.slice(0, 8)}...`);
 
   const accounts = conf.get('accounts') || [];
   if (accounts.length === 0) {
@@ -276,58 +320,112 @@ const switchAccount = async (name) => {
   
 };
 
+const initConfig = async () => {
+  const splash = `
+((((((((((((((((/((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((
+((((((((((((((*    /((((((((((((((((((((((((((((((((((((((((((*,***((((((((((((
+((((((((((((((*      .(((((((((((((((((((((((((((((((((((((*,******((((((((((((
+((((((((((((((*         ,(((((((((((((((((((((((((((((((/,*********((((((((((((
+((((((((((((((*   /#(      *((((((((((((((((((((((((((******(#(****((((((((((((
+((((((((((((((*   /((##*     .(((((((((((((((((((((******/##(((****((((((((((((
+((((((((((((((*   /(((((#(      *((((((((((((((((******/#((((((****((((((((((((
+((((((((((((((*   /((((((((#(.     /((((((((((******(#(((((((((****#(((((((((((
+((((((((((((((*   /((((((((((##,     *((((((******##(((((((((((****#(((((((((((
+(((((((((((((#*   /(((((((((((((##   .#((((/***(#((((((((((((((****#(((((((((((
+(((((((((((((#*   /#(((((((((((((#   .#(((#/***((((((((((((((((****#(((((((((((
+(((((((((((((#*   /#((((((((((((##   .#(((#/***(#((((((((((((((****#(((((((((((
+#(########(###*   /#####(##(######   .#####/***(####(#####(####****##(#####(###
+##############*   /###############   .#####/***(###############****############
+##############*   /###############   .#####/***(###############****############
+##############*   /###############   .#####/***(###############****############
+##############/   (###############   ,#####(***(###############***/############
+###############################################################################
+`;
+
+  
+  console.log(chalk.green(splash));
+  console.log(chalk.green('\tWelcome to dai-cli! Your gateway to exploring DAI and MakerDAO'));
+  console.log(chalk.green('\tThis is a Hot Air production (https://hotair.tech)\n'));
+  
+  console.log("Let's get started. I have to ask a just few questions. It won't hurt, I promise.");
+  
+  await addAccount();
+  await setNetwork();
+  await setInfura();
+  const configPath = getConfig().path;
+  console.log(`Configuration now stored at path ${configPath}`);
+  console.log(chalk.green(`You're all set! Rock with your bad self`));
+}
+
 const checkNodeVersion = () => {
   const nodeVersion = process.versions.node;
   const [major, minor, _] = nodeVersion.split('.');
-  if (parseInt(major) < 10 || (parseInt(major) < 11 && parseInt(minor) < 15)) {
-    console.error(chalk.yellow(`It appears you are running a version of node < 10.15.0. It is highly recommended that you use 10.15 or newer so that you can use the 'await' keyword in the REPL for asynchronous calls.`));
+  if (parseInt(major) < 10) {
+    console.error(chalk.yellow(`It appears you are running a version of node < 10 It is highly recommended that you use node >= 10 so that you can use the 'await' keyword in the REPL for asynchronous calls.`));
   }
 };
 
-const argv = require('yargs')
-      .version()
-      .usage('Usage: dai <command> [options]')
-      .option('chain', {alias: 'C',
-                    default: 'test',
-                    describe: 'select a network',
-                    choices: ['test', 'kovan', 'mainnet']})
-      .command('repl', 'Start an READ-EVAL-PRINT-LOOP')
-      .command('config', 'Manage configurations', (yargs) => {
-        return yargs.command('add', 'add a configuration')
-          .command('list', 'list available configurations')
-          .command('switch [name]', 'switch current configuration')
-          .demandCommand(1, 'You need at least one command before moving on');
-      })
-      .demandCommand(1, 'You need at least one command before moving on')
-      .help('h')
-      .alias('h', 'help')
-      .epilogue('for more information, find the documentation at https://makerdao.com/documentation')
-      .argv;
+
+const yargs = require('yargs');
+const argv = yargs.version()
+                  .usage('Usage: dai <command> [options]')
+                  .option('chain', {alias: 'C',
+                                    default: getConfig().network ? getConfig().get('network') : 'test',
+                                    describe: 'select a network, You can enter a name like `test`, `kovan`, `mainnet`, or a JSON RPC url such as `http://localhost:7545`. Note that `test` resolves to the special http://127.0.0.1:2000 JSON RPC URL used by the dai.js integration tests.'})
+                  .command('repl', 'Start an READ-EVAL-PRINT-LOOP')
+                  .command('init', 'initialize configuration')
+                  .command('config', 'Manage configurations', (yargs) => {
+                    return yargs
+                      .command('add', 'add an account configuration')
+                      .command('show', 'show current configuration')
+                      .command('switch [name]', 'switch current configuration')
+                      .command('network [networkName]', 'change the default network')
+                      .command('infura [infuraApiKey]', 'set the infura api key')
+                      .demandCommand(1, 'You need at least one command before moving on');
+                  })
+                  .demandCommand(1, 'You need at least one command before moving on')
+                  .help('h')
+                  .alias('h', 'help')
+                  .epilogue('for more information, find the documentation at https://makerdao.com/documentation')
+                  .argv;
 
 const subcommand = argv._[0];
 
 switch (subcommand) {
-case 'repl':
-  checkNodeVersion();
-  startRepl(argv.chain);
-  break;
-case 'config':
-  const configCommand = argv._[1];
-  switch (configCommand) {
-  case 'add':
-    addConfig();
+  case 'init':
+    initConfig();
     break;
-  case 'list':
-    listConfig();
+  case 'config':
+    const configCommand = argv._[1];
+    switch (configCommand) {
+      case 'add':
+        addAccount();
+        break;
+      case 'show':
+        listConfig();
+        break;
+      case 'switch':
+        switchAccount(argv.name);
+        break;
+      case 'network':
+        setNetwork(argv.networkName);
+        break;
+      case 'infura':
+        setInfura(argv.infuraApiKey);
+        break;
+      default:
+        console.log(chalk.red(`Unknown subcommand ${configCommand}`));
+        yargs.showHelp();
+        break;
+    }
     break;
-  case 'switch':
-    switchAccount(argv.name);
+  case 'repl':
+    checkNodeVersion();
+    startRepl(argv.chain);
     break;
   default:
-    throw new Error(`Unknown subcommand ${configCommand}`);
-  }
-  break;
-default:
-  throw new Error(`Unknown subcommand ${subcommand}`);
+    console.log(chalk.red(`Unknown subcommand ${configCommand}`));
+    yargs.showHelp()
+    break;
 }
   
