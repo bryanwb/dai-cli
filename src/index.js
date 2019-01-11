@@ -3,6 +3,7 @@
 // This happens to be the Mnemonic used for the test network that runs the integration tests
 // for dai.js
 import chalk from 'chalk';
+import { pathToFileURL } from 'url';
 
 // this is the url for the Ganache network that runs the dai.js integration tests
 const TEST_NETWORK_URL = 'http://127.0.0.1:2000';
@@ -70,17 +71,25 @@ const loadConfig = async (network) => {
   const config = getCurrentConfig();
 
   let wallet;
-  if (config.type === 'mnemonic') {
-    wallet = ethers.Wallet.fromMnemonic(config.mnemonic);
-  } else if (config.type === 'environment') {
-    try {
-      wallet = new ethers.Wallet(process.env[config.env_var_name]);
-    } catch (err) {
-      console.error(
-        chalk.red(`Loading private key from environment variable ${config.env_var_name} failed because ${err.reason}`)
-      );
-      process.exit(1);
-    }
+  switch (config.type) {
+    case 'mnemonic':
+      wallet = ethers.Wallet.fromMnemonic(config.mnemonic);
+      break;
+    case 'environment':
+      try {
+        wallet = new ethers.Wallet(process.env[config.env_var_name]);
+      } catch (err) {
+        console.error(
+          chalk.red(`Loading private key from environment variable ${config.env_var_name} failed because ${err.reason}`)
+        );
+        process.exit(1);
+      }
+      break;
+    case 'encrypted-json':
+      wallet = await loadJsonWallet(config.address, config.password);
+      break;
+    default:
+      throw new Error(`Account type ${config.type} not recognized`);
   }
 
   network = network ? network : config.network;
@@ -94,6 +103,7 @@ const loadConfig = async (network) => {
     await authenticate(() => maker.authenticate(maker));
   } catch (err) {
     console.error(chalk.red(`Failed to authenticate to network ${networkName} with url ${settings.web3.provider.url}. Is it accessible?`));
+    process.exit(1);
   }
 
   wallet.provider = settings.provider;
@@ -101,6 +111,32 @@ const loadConfig = async (network) => {
 
   return [config, wallet, maker];
 };
+
+async function loadJsonWallet(address, password) {
+  const fs = require('fs');
+  const path = require('path');
+  const ethers = require('ethers');
+  
+  // strip any leading 0x
+  address = address.startsWith('0x')? address.slice(2) : address;
+
+  let walletJson;
+  
+  const keystoreDir = path.join(process.env.HOME, '.ethereum/keystore');
+  const jsonWallets = fs.readdirSync(keystoreDir).filter((f) => f.endsWith(address)).map((f) => path.join(keystoreDir, f));
+  if (jsonWallets.length > 1) {
+    console.log(chalk.red(`ERROR: Found more than one keystore files matching address ${address}. That's not possible! Found files ${jsonWallets}`));
+    process.exit(1);
+  } else if (jsonWallets.length === 0) {
+    console.log(chalk.red(`ERROR: Did not find keystore file matching address ${address} in directory ${keystoreDir}`));
+    process.exit(1);
+  } else {
+    walletJson = fs.readFileSync(jsonWallets[0]).toString();
+  }
+
+  return ethers.Wallet.fromEncryptedWallet(walletJson, password);
+}
+
 
 async function startRepl(network) {
   const Repl = require('repl');
@@ -182,29 +218,39 @@ async function addAccount() {
 
   switch (typeAnswer.type) {
   case 'environment variable':
-    settings.type = 'environment';
-    const envQuestion = [{type: 'input', name: 'env_var_name',
-                          default: 'PRIVATE_KEY',
-                          message: 'Enter the name of the environment variable you use to store your private key.\nOnly the name of the variable is stored on disk.\nThe value is only loaded into memory when the dai-cli command executes and is NEVER stored on disk.\n'
-                         }];
-    const envAnswer = await inquirer.prompt(envQuestion);
-    if (process.env[envAnswer.env_var_name] == '' || process.env[envAnswer.env_var_name] == undefined) {
-      console.error(chalk.red(`No environment variable currently defined with the name ${envAnswer.env_var_name}, come back after you have set it`));
-      process.exit(1);
-    }
-    settings.env_var_name = envAnswer.env_var_name;
-    break;
+      settings.type = 'environment';
+      const envQuestion = [{type: 'input', name: 'env_var_name',
+                            default: 'PRIVATE_KEY',
+                            message: 'Enter the name of the environment variable you use to store your private key.\nOnly the name of the variable is stored on disk.\nThe value is only loaded into memory when the dai-cli command executes and is NEVER stored on disk.\n'
+      }];
+      const envAnswer = await inquirer.prompt(envQuestion);
+      if (process.env[envAnswer.env_var_name] == '' || process.env[envAnswer.env_var_name] == undefined) {
+        console.error(chalk.red(`No environment variable currently defined with the name ${envAnswer.env_var_name}, come back after you have set it`));
+        process.exit(1);
+      }
+      settings.env_var_name = envAnswer.env_var_name;
+      break;
   case 'HD Wallet mnemonic':
-    settings.type = 'mnemonic';
-    const mnemonicQuestion = [{type: 'input', name: 'mnemonic',
-                               message: 'Enter the mnemonic for your hierarchical deterministic wallet. WARNING: This value is stored on disk.'}];
-    const mnemonicAnswer = await inquirer.prompt(mnemonicQuestion);
-    settings.mnemonic = mnemonicAnswer.mnemonic;
-    break;
-  case 'encrypted json':
-    throw new Error('Encrypted JSON not yet supported');
+      settings.type = 'mnemonic';
+      const mnemonicQuestion = [{type: 'input', name: 'mnemonic',
+                                 message: 'Enter the mnemonic for your hierarchical deterministic wallet. WARNING: This value is stored on disk.'}];
+      const mnemonicAnswer = await inquirer.prompt(mnemonicQuestion);
+      settings.mnemonic = mnemonicAnswer.mnemonic;
+      break;
+  case 'encrypted-json':
+      settings.type = 'encrypted-json';
+      const addressQuestion = [{type: 'input', name: 'address',
+                                 message: 'Enter the hexadecimal address for your encrypted JSON wallet.'}];
+      const addressAnswer = await inquirer.prompt(addressQuestion);
+      settings.address = addressAnswer.address;
+      const passwordQuestion = [{type: 'password', name: 'password',
+                                 message: 'Enter the password for your encrypted JSON wallet. WARNING: This value is stored on disk'}];
+      const passwordAnswer = await inquirer.prompt(passwordQuestion);
+      settings.password = passwordAnswer.password;
+      await loadJsonWallet(settings.address, settings.password)
+      break;
   default:
-    throw new Error(`Unexpected type ${typeAnswer.type}`);
+      throw new Error(`Unexpected type ${typeAnswer.type}`);
   }
 
   accounts[nameAnswer.name] = settings;
@@ -243,7 +289,6 @@ const setInfura = async (infuraApiKey) => {
     let askForInfura = true;
     if (infuraApiKey) {
       const updateInfura = await inquirer.prompt([{type: 'confirm', name: 'prompt_infura', message: `You already have the Infura API Key set to '${infuraApiKey}' do you wish to change it?`}]);
-      console.dir(updateInfura);
       if (!updateInfura.prompt_infura) {
         askForInfura = false;
       }
@@ -264,7 +309,7 @@ const setInfura = async (infuraApiKey) => {
 };
 
 
-const listConfig = () => {
+const showConfig = () => {
   const conf = getConfig();
   if (conf.size === 0) {
     console.log(chalk.red('No configurations currently setup. Please run `dai init`'));
@@ -289,6 +334,7 @@ const listConfig = () => {
         t.cell('type', acct.type);
         t.cell('environment variable', acct.type === 'environment' ? acct.env_var_name : 'n/a');
         t.cell('mnemonmic', acct.type === 'mnemonic' ? `${acct.mnemonic.slice(0, 8)}...` : 'n/a');
+        t.cell('encrypted json', acct.type === 'encrypted-json' ? `0x${acct.address.slice(0, 4)}.../${acct.password.slice(0,3)}...` : 'n/a');
         t.newRow();
       });
     console.log(t.toString());
@@ -402,7 +448,7 @@ switch (subcommand) {
         addAccount();
         break;
       case 'show':
-        listConfig();
+        showConfig();
         break;
       case 'switch':
         switchAccount(argv.name);
