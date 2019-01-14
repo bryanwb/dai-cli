@@ -1,12 +1,12 @@
-@bryanwb/dai-shell
+dai-shell
 ==================
 
 An interactive shell and command-line interface for dai.js
 
 [![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
-[![Version](https://img.shields.io/npm/v/@bryanwb/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
-[![Downloads/week](https://img.shields.io/npm/dw/@bryanwb/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
-[![License](https://img.shields.io/npm/l/@bryanwb/dai-shell.svg)](https://github.com/git@github.com:bryanwb/dai-shell.git/blob/master/package.json)
+[![Version](https://img.shields.io/npm/v/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
+[![Downloads/week](https://img.shields.io/npm/dw/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
+[![License](https://img.shields.io/npm/l/dai-shell.svg)](https://github.com/git@github.com:bryanwb/dai-shell.git/blob/master/package.json)
 
 <!-- toc -->
 * [Usage](#usage)
@@ -17,11 +17,11 @@ An interactive shell and command-line interface for dai.js
 # Usage
 <!-- usage -->
 ```sh-session
-$ npm install -g @bryanwb/dai-shell
+$ npm install -g dai-shell
 $ dai COMMAND
 running command...
 $ dai (-v|--version|version)
-@bryanwb/dai-shell/0.0.5 linux-x64 node-v10.15.0
+dai-shell/0.0.6 linux-x64 node-v10.15.0
 $ dai --help [COMMAND]
 USAGE
   $ dai COMMAND
@@ -39,7 +39,8 @@ dai-cli to use an environment variable it only saves the name of that variable t
 `dai init` will also ask you for you infura API key. This value is written to disk.
 
 Subsequent configuration changes can be made with the `dai config` subcommand. Of special interest is the ability to add multiple accounts with the `dai config add` subcommand and switch the default account with the `dai config switch [accountName]` subcommand.
--
+
+
 # Up and Running
 
 Run `dai shell` to start a shell connected to a chain. Note that this is a customized node.js REPL w/ special pre-populated variables and support for the `await` keyword. All pre-populated variables are accessible from the `ctx` variable:

@@ -1,7 +1,7 @@
 {
-  "name": "@bryanwb/dai-shell",
+  "name": "dai-shell",
   "description": "An interactive shell and command-line interface for dai.js",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "author": "Bryan W. Berry <bryan.berry@gmail.com>",
   "bin": {
     "dai": "./bin/dai"
@@ -34,14 +34,14 @@
     "/npm-shrinkwrap.json",
     "/oclif.manifest.json",
     "bin/dai",
-    "lib"
+    "src"
   ],
   "homepage": "https://github.com/git@github.com:bryanwb/dai-shell.git",
   "keywords": [
     "oclif"
   ],
   "license": "MIT",
-  "main": "lib/index.js",
+  "main": "src/index.js",
   "oclif": {
     "commands": "./src/commands",
     "bin": "dai",
