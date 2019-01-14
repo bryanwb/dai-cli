@@ -1,7 +1,7 @@
 {
   "name": "dai-shell",
   "description": "An interactive shell and command-line interface for dai.js",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": "Bryan W. Berry <bryan.berry@gmail.com>",
   "bin": {
     "dai": "./bin/dai"

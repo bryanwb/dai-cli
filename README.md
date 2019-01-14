@@ -51,11 +51,11 @@ Run `dai shell` to start a shell connected to a chain. Note that this is a custo
 * eth: a [connection](https://docs.ethers.io/ethers.js/html/api-providers.html) to Ethereum blockchain.
 * utils: utility functions from [ethers](https://docs.ethers.io/ethers.js/html/api-utils.html)
 
-Here is an example REPL session:
+Here is an example shell session:
 
 
 ```sh-session
-$ dai repl
+$ dai shell
 Connecting to kovan - https://kovan.infura.io/[REDACTED]
 dai> var cdp = await ctx.maker.openCdp()
 dai> var result = await cdp.lockEth(0.1, ctx.Maker.ETH)
