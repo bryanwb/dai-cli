@@ -2,8 +2,7 @@
 
 # this script is necessary so that we can pass the --experimental-repl-await
 # argument to the node.js interpreter
+LIBDIR="$(cd $(dirname "$(readlink -f "$0")") && cd ../src && pwd)"
 
-LIBDIR="$(cd $(dirname "$(readlink -f "$0")") && cd ../lib && pwd)"
-
-node --experimental-repl-await "${LIBDIR}/index.js" "$@"
+node --experimental-repl-await "${LIBDIR}/cli.js" "$@"
 

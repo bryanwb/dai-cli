@@ -1,37 +1,60 @@
 {
-  "name": "@bryanwb/dai-cli",
+  "name": "@bryanwb/dai-shell",
+  "description": "An interactive shell and command-line interface for dai.js",
   "version": "0.0.5",
-  "description": "A command-line interface for dai.js",
-  "main": "lib/index.js",
-  "repository": "git@github.com:bryanwb/dai-cli.git",
   "author": "Bryan W. Berry <bryan.berry@gmail.com>",
-  "license": "MIT",
   "bin": {
     "dai": "./bin/dai"
   },
-  "files": [
-    "lib",
-    "bin/dai"
-  ],
+  "bugs": "https://github.com/git@github.com:bryanwb/dai-shell.git/issues",
   "dependencies": {
     "@makerdao/dai": "^0.9.10",
+    "@oclif/command": "^1",
+    "@oclif/config": "^1",
+    "@oclif/plugin-help": "^2",
     "configstore": "^4.0.0",
     "easy-table": "^1.1.1",
-    "inquirer": "^6.2.1",
-    "yargs": "^12.0.5"
+    "inquirer": "^6.2.1"
   },
   "devDependencies": {
+    "@oclif/dev-cli": "^1",
+    "@oclif/test": "^1",
     "@types/node": "^10.12.18",
-    "@types/yargs": "^12.0.5",
-    "babel-cli": "^6.26.0",
-    "babel-core": "^6.26.3",
-    "babel-plugin-transform-async-to-generator": "^6.24.1",
-    "babel-plugin-transform-runtime": "^6.23.0",
-    "babel-preset-env": "^1.7.0",
-    "babel-preset-stage-2": "^6.24.1"
+    "chai": "^4",
+    "eslint": "^5.5",
+    "eslint-config-oclif": "^3.1",
+    "globby": "^8",
+    "mocha": "^5",
+    "nyc": "^13"
   },
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "files": [
+    "/npm-shrinkwrap.json",
+    "/oclif.manifest.json",
+    "bin/dai",
+    "lib"
+  ],
+  "homepage": "https://github.com/git@github.com:bryanwb/dai-shell.git",
+  "keywords": [
+    "oclif"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "oclif": {
+    "commands": "./src/commands",
+    "bin": "dai",
+    "plugins": [
+      "@oclif/plugin-help"
+    ]
+  },
+  "repository": "git@github.com:bryanwb/dai-shell.git",
   "scripts": {
-    "build": "babel src --out-dir lib --ignore **/__tests__",
-    "cli": "node --experimental-repl-await -r babel-register src/index.js"
+    "postpack": "rm -f oclif.manifest.json",
+    "posttest": "eslint .",
+    "prepack": "oclif-dev manifest && oclif-dev readme",
+    "test": "nyc mocha --forbid-only \"test/**/*.test.js\"",
+    "version": "oclif-dev readme && git add README.md"
   }
 }

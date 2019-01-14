@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": ["es2017", "node"],
     "allowSyntheticDefaultImports": true,
+    "moduleResolution": "node",
     "noEmit": true,
     "checkJs": true,
     "module": "commonjs",

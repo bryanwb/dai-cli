@@ -1,34 +1,48 @@
-# Dai-cli helps you discover DeFi!
+@bryanwb/dai-shell
+==================
 
-The `dai` provides commands and a REPL to help you learn how MakerDAO works and make
-common operations easier.
+An interactive shell and command-line interface for dai.js
 
-# Getting started
+[![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
+[![Version](https://img.shields.io/npm/v/@bryanwb/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
+[![Downloads/week](https://img.shields.io/npm/dw/@bryanwb/dai-shell.svg)](https://npmjs.org/package/@bryanwb/dai-shell)
+[![License](https://img.shields.io/npm/l/@bryanwb/dai-shell.svg)](https://github.com/git@github.com:bryanwb/dai-shell.git/blob/master/package.json)
 
-Install the dai-cli npm package.
-
+<!-- toc -->
+* [Usage](#usage)
+* [Getting Started](#getting-started)
+* [Up and Running](#up-and-running)
+* [Author & License](#author-license)
+<!-- tocstop -->
+# Usage
+<!-- usage -->
+```sh-session
+$ npm install -g @bryanwb/dai-shell
+$ dai COMMAND
+running command...
+$ dai (-v|--version|version)
+@bryanwb/dai-shell/0.0.5 linux-x64 node-v10.15.0
+$ dai --help [COMMAND]
+USAGE
+  $ dai COMMAND
+...
 ```
-# to install globally w/ yarn
-$ yarn global add @bryanwb/dai-cli
-# or with npm
-$ npm install -g @bryanwb/dai-cli
-```
+<!-- usagestop -->
 
-Next, you will want to configure dai-cli with an account. Run the `dai init` command and
+# Getting Started
+
+
+Next, you will want to configure dai-shell with an account. Run the `dai init` command and
 a helpful wizard will walk you through adding your credentials. Note that dai-cli has the
 option to store the name of an environment variable to source your private key from. When you tell
 dai-cli to use an environment variable it only saves the name of that variable to disk and not your actual private key.
 `dai init` will also ask you for you infura API key. This value is written to disk.
 
-Subsequent configuration changes can be made with the `dai config` subcommand. Of special interest
-is the ability to add multiple accounts with the `dai config add` subcommand and switch the default
-account with the `dai config switch [accountName]` subcommand.
-
+Subsequent configuration changes can be made with the `dai config` subcommand. Of special interest is the ability to add multiple accounts with the `dai config add` subcommand and switch the default account with the `dai config switch [accountName]` subcommand.
+-
 # Up and Running
 
-Run `dai repl` to get a REPL connected to a chain. Note that this is a customized repl w/ special
-
-pre-populated variables and support for the `await` keyword. All pre-populated variables are accessible from the `ctx` variable:
+Run `dai shell` to start a shell connected to a chain. Note that this is a customized node.js REPL w/ special pre-populated variables and support for the `await` keyword. All pre-populated variables are accessible from the `ctx` variable:
 
 * maker: instance of the [Maker object](https://makerdao.com/documentation/#maker) connected to the chain specified during `dai config add` and with the current private key or mnemonic.
 * Maker: The big daddy Maker object
@@ -38,13 +52,13 @@ pre-populated variables and support for the `await` keyword. All pre-populated v
 
 Here is an example REPL session:
 
-```shell
+
+```sh-session
 $ dai repl
 Connecting to kovan - https://kovan.infura.io/[REDACTED]
 dai> var cdp = await ctx.maker.openCdp()
 dai> var result = await cdp.lockEth(0.1, ctx.Maker.ETH)
 dai> result.receipt.blockNumber
-10004760
 dai> result.receipt.transactionHash
 '0x49195e1dec124de3f3e98af40d499e33d14e73ddde5d56959ceb8981d7ae902a'
 dai> cdp = await ctx.maker.getCdp(cdp.id)
@@ -55,8 +69,8 @@ dai> result = await cdp.drawDai(5, ctx.Maker.DAI)
 dai> var r = await cdp.getCollateralizationRatio()
 dai> r
 3.0606
-```
-
+ ```
+ 
 # Author & License
-
+ 
 Copyright 2019 Bryan W. Berry, MIT license
